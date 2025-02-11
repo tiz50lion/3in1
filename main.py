@@ -1,4 +1,7 @@
-
+import os
+import sys
+import time
+import random
 import re
 import threading
 import multiprocessing
@@ -193,7 +196,6 @@ def process_numbers():
     except Exception as e:
         print(e)
 
-
 # --- Phone Number Validator (Carrier Lookup) ---
 class PhoneNumberValidator:
 
@@ -213,10 +215,7 @@ class PhoneNumberValidator:
                                           all_text, re.DOTALL)
                 if carrier_match:
                     carrier_info = carrier_match.group(1).strip()
-                    print(
-                        colored(
-                            f"Carrier lookup for {npa}-{nxx}: {carrier_info}",
-                            "green"))
+                    print(colored(f"Carrier lookup for {npa}-{nxx}: {carrier_info}", "green"))
                     return carrier_info
         return None
 
@@ -229,15 +228,12 @@ class PhoneNumberValidator:
                 nxx = match.group(2)
                 carrier_info = self.lookup_carrier_info(npa, nxx)
                 if carrier_info:
-                    phone_number = re.sub(r'\D', '',
-                                          line.strip().split("|")[0].strip())
+                    phone_number = re.sub(r'\D', '', line.strip().split("|")[0].strip())
                     if carrier_info not in valid_results:
                         valid_results[carrier_info] = [phone_number]
                     else:
                         valid_results[carrier_info].append(phone_number)
-                    print(
-                        colored(f"{line.strip()} | Carrier: {carrier_info}",
-                                "green"))
+                    print(colored(f"{line.strip()} | Carrier: {carrier_info}", "green"))
                     with open("all_lookup_numbers.txt", "a") as f:
                         f.write(phone_number + "\n")
         return valid_results
@@ -252,9 +248,7 @@ class PhoneNumberValidator:
             lines = file.readlines()
         num_batches = 30
         batch_size = max(1, len(lines) // num_batches)
-        batches = [
-            lines[i:i + batch_size] for i in range(0, len(lines), batch_size)
-        ]
+        batches = [lines[i:i + batch_size] for i in range(0, len(lines), batch_size)]
         pool = multiprocessing.Pool(processes=num_batches)
         results = pool.map(self.process_batch, batches)
         pool.close()
@@ -270,19 +264,40 @@ class PhoneNumberValidator:
             with open(output_filename, 'w') as output_file:
                 for phone_number in numbers:
                     output_file.write(phone_number + '\n')
-        print(
-            colored(
-                f"{len(lines)} numbers processed. Valid numbers saved in their respective carrier files.",
-                "cyan"))
+        print(colored(f"{len(lines)} numbers processed. Valid numbers saved in their respective carrier files.", "cyan"))
 
 
 # =============================================================================
-#                          GUI Application Code
+#                     GUI Application Code with Animation
 # =============================================================================
+
+class AnimatedFrame(ttk.Frame):
+    """
+    A ttk.Frame with a slide-in animation.
+    """
+    def slide_in(self, direction="left", duration=300):
+        self.update_idletasks()
+        width = self.winfo_width() or self.master.winfo_width()
+        steps = 20
+        step_delay = duration // steps
+        if direction == "left":
+            start_x = -width
+            delta = width / steps
+        else:  # default or right
+            start_x = self.master.winfo_width()
+            delta = -width / steps
+        # Place frame off-screen initially
+        self.place(x=int(start_x), y=0, relwidth=1, relheight=1)
+
+        def animate(step):
+            new_x = start_x + delta * step
+            self.place(x=int(new_x), y=0)
+            if step < steps:
+                self.after(step_delay, animate, step + 1)
+        animate(0)
 
 
 class MainApp(tk.Tk):
-
     def __init__(self, *args, **kwargs):
         tk.Tk.__init__(self, *args, **kwargs)
         self.title("Fraud Department - Phone Number Validation")
@@ -295,27 +310,23 @@ class MainApp(tk.Tk):
         style.theme_use("clam")
         style.configure("TFrame", background="#f0f0f0")
         style.configure("TLabel", background="#f0f0f0", font=("Segoe UI", 11))
-        style.configure("Header.TLabel",
-                        font=("Segoe UI", 16, "bold"),
-                        background="#4a7abc",
-                        foreground="white",
-                        anchor="center")
+        style.configure("Header.TLabel", font=("Segoe UI", 16, "bold"),
+                        background="#4a7abc", foreground="white", anchor="center")
         style.configure("TButton", font=("Segoe UI", 10))
         style.configure("TEntry", font=("Segoe UI", 10))
         style.configure("TCombobox", font=("Segoe UI", 10))
 
-        # Create container for pages
-        container = ttk.Frame(self)
+        # Create container for pages (using tk.Frame for better control with place)
+        container = tk.Frame(self, bg="#f0f0f0")
         container.pack(side="top", fill="both", expand=True)
-        container.grid_rowconfigure(0, weight=1)
-        container.grid_columnconfigure(0, weight=1)
 
         self.frames = {}
         for F in (GeneratorPage, ValidationPage, CarrierLookupPage):
             page_name = F.__name__
             frame = F(parent=container, controller=self)
             self.frames[page_name] = frame
-            frame.grid(row=0, column=0, sticky="nsew")
+            # Use place to support animation
+            frame.place(x=0, y=0, relwidth=1, relheight=1)
 
         self.check_license_key()
         self.show_frame("GeneratorPage")
@@ -323,6 +334,9 @@ class MainApp(tk.Tk):
     def show_frame(self, page_name):
         frame = self.frames[page_name]
         frame.tkraise()
+        # Run the slide-in animation for a beautified transition
+        if hasattr(frame, "slide_in"):
+            frame.slide_in(direction="left", duration=300)
         if hasattr(frame, "on_show"):
             frame.on_show()
 
@@ -339,76 +353,53 @@ class MainApp(tk.Tk):
             if key == correct_key:
                 break
             else:
-                messagebox.showerror(
-                    "Error",
-                    "Incorrect license key. Purchase a license key at https://t.me/Tizlion",
-                    parent=self)
+                messagebox.showerror("Error",
+                                     "Incorrect license key. Purchase a license key at https://t.me/Tizlion",
+                                     parent=self)
 
 
 # ----------------- Page 1: Phone Number Generator -----------------
-class GeneratorPage(ttk.Frame):
-
+class GeneratorPage(AnimatedFrame):
     def __init__(self, parent, controller):
-        ttk.Frame.__init__(self, parent)
+        AnimatedFrame.__init__(self, parent)
         self.controller = controller
 
-        header = ttk.Label(self,
-                           text="Phone Number Generator",
-                           style="Header.TLabel")
+        header = ttk.Label(self, text="Phone Number Generator", style="Header.TLabel")
         header.pack(fill="x", pady=(0, 10))
 
         form_frame = ttk.Frame(self)
         form_frame.pack(pady=10, padx=20, fill="x")
 
-        ttk.Label(form_frame, text="Select Country Code:").grid(row=0,
-                                                                column=0,
-                                                                sticky="w",
-                                                                pady=5)
+        ttk.Label(form_frame, text="Select Country Code:").grid(row=0, column=0, sticky="w", pady=5)
         self.country_var = tk.StringVar(value="1")
-        self.country_combo = ttk.Combobox(form_frame,
-                                          textvariable=self.country_var,
-                                          state="readonly",
+        self.country_combo = ttk.Combobox(form_frame, textvariable=self.country_var, state="readonly",
                                           values=["1", "44", "61"])
         self.country_combo.grid(row=0, column=1, sticky="ew", pady=5)
 
-        ttk.Label(form_frame,
-                  text="Area Codes (comma or space separated):").grid(
-                      row=1, column=0, sticky="w", pady=5)
+        ttk.Label(form_frame, text="Area Codes (comma or space separated):").grid(row=1, column=0, sticky="w", pady=5)
         self.area_entry = ttk.Entry(form_frame)
         self.area_entry.grid(row=1, column=1, sticky="ew", pady=5)
 
-        ttk.Label(form_frame,
-                  text="Prefixes (optional, comma or space separated):").grid(
-                      row=2, column=0, sticky="w", pady=5)
+        ttk.Label(form_frame, text="Prefixes (optional, comma or space separated):").grid(row=2, column=0, sticky="w", pady=5)
         self.prefix_entry = ttk.Entry(form_frame)
         self.prefix_entry.grid(row=2, column=1, sticky="ew", pady=5)
 
-        ttk.Label(form_frame,
-                  text="How many phone numbers to generate:").grid(row=3,
-                                                                   column=0,
-                                                                   sticky="w",
-                                                                   pady=5)
+        ttk.Label(form_frame, text="How many phone numbers to generate:").grid(row=3, column=0, sticky="w", pady=5)
         self.count_entry = ttk.Entry(form_frame)
         self.count_entry.grid(row=3, column=1, sticky="ew", pady=5)
         form_frame.columnconfigure(1, weight=1)
 
-        self.gen_progress = ttk.Progressbar(self,
-                                            orient="horizontal",
-                                            mode="determinate")
+        self.gen_progress = ttk.Progressbar(self, orient="horizontal", mode="determinate")
         self.gen_progress.pack(pady=10, padx=20, fill="x")
         self.progress_label = ttk.Label(self, text="Progress: 0%")
         self.progress_label.pack()
 
         button_frame = ttk.Frame(self)
         button_frame.pack(pady=10)
-        self.generate_button = ttk.Button(button_frame,
-                                          text="Generate",
-                                          command=self.start_generation)
+        self.generate_button = ttk.Button(button_frame, text="Generate", command=self.start_generation)
         self.generate_button.grid(row=0, column=0, padx=5)
-        self.continue_button = ttk.Button(button_frame,
-                                          text="Continue to Validate",
-                                          command=self.go_to_validation,
-                                          state="disabled")
+        self.continue_button = ttk.Button(button_frame, text="Continue to Validate",
+                                          command=self.go_to_validation, state="disabled")
         self.continue_button.grid(row=0, column=1, padx=5)
 
     def update_gen_progress(self, current, total, message=None):
@@ -421,8 +412,7 @@ class GeneratorPage(ttk.Frame):
 
     def start_generation(self):
         self.generate_button.config(state="disabled")
-        threading.Thread(target=self.generate_numbers_thread,
-                         daemon=True).start()
+        threading.Thread(target=self.generate_numbers_thread, daemon=True).start()
 
     def generate_numbers_thread(self):
         try:
@@ -431,10 +421,8 @@ class GeneratorPage(ttk.Frame):
             prefixes_raw = self.prefix_entry.get().strip()
             count_str = self.count_entry.get().strip()
             if not (area_codes_raw and count_str):
-                messagebox.showerror(
-                    "Input Error",
-                    "Please fill in the required fields (area codes and number count).",
-                    parent=self)
+                messagebox.showerror("Input Error", "Please fill in the required fields (area codes and number count).",
+                                     parent=self)
                 self.generate_button.config(state="normal")
                 return
             try:
@@ -442,31 +430,19 @@ class GeneratorPage(ttk.Frame):
                 if num_count <= 0:
                     raise ValueError
             except ValueError:
-                messagebox.showerror(
-                    "Input Error",
-                    "Please enter a positive integer for the number count.",
-                    parent=self)
+                messagebox.showerror("Input Error", "Please enter a positive integer for the number count.", parent=self)
                 self.generate_button.config(state="normal")
                 return
 
-            area_codes = [
-                code.strip() for code in re.split(r'[,\s]+', area_codes_raw)
-                if code.isdigit()
-            ]
+            area_codes = [code.strip() for code in re.split(r'[,\s]+', area_codes_raw) if code.isdigit()]
             if not area_codes:
-                messagebox.showerror(
-                    "Input Error",
-                    "Please enter valid area codes (numeric).",
-                    parent=self)
+                messagebox.showerror("Input Error", "Please enter valid area codes (numeric).", parent=self)
                 self.generate_button.config(state="normal")
                 return
 
             prefixes = []
             if prefixes_raw:
-                prefixes = [
-                    p.strip() for p in re.split(r'[,\s]+', prefixes_raw)
-                    if p.isdigit()
-                ]
+                prefixes = [p.strip() for p in re.split(r'[,\s]+', prefixes_raw) if p.isdigit()]
 
             self.update_gen_progress(0, num_count, "Connecting to server...")
             simulate_api_request(duration=1)
@@ -479,26 +455,22 @@ class GeneratorPage(ttk.Frame):
                     prefix = str(random.randint(100, 999))
                 if country_code == "61":
                     local_length = random.choice([6, 8])
-                    line_number = ''.join(
-                        random.choices('0123456789', k=local_length))
+                    line_number = ''.join(random.choices('0123456789', k=local_length))
                     phone_number = f'+{country_code} ({area}) {prefix}{line_number}'
                 else:
                     line_number = ''.join(random.choices('0123456789', k=4))
                     phone_number = f'+{country_code} ({area}) {prefix}-{line_number}'
                 generated_numbers.append(phone_number)
                 print(colored("Generated: " + phone_number, "green"))
-                self.controller.after(0, self.update_gen_progress, i + 1,
-                                      num_count)
+                self.controller.after(0, self.update_gen_progress, i + 1, num_count)
                 time.sleep(0.001)
             clear_file("Gen.txt")
             with open("Gen.txt", "w") as f:
                 for num in generated_numbers:
                     f.write(num + "\n")
-            self.controller.after(
-                0, self.update_gen_progress, num_count, num_count,
-                f"Done: {num_count} numbers generated and saved.")
-            self.controller.after(
-                0, lambda: self.continue_button.config(state="normal"))
+            self.controller.after(0, self.update_gen_progress, num_count, num_count,
+                                  f"Done: {num_count} numbers generated and saved.")
+            self.controller.after(0, lambda: self.continue_button.config(state="normal"))
         except Exception as e:
             messagebox.showerror("Error", str(e), parent=self)
             self.generate_button.config(state="normal")
@@ -508,27 +480,20 @@ class GeneratorPage(ttk.Frame):
 
 
 # ----------------- Page 2: Amazon Validation -----------------
-class ValidationPage(ttk.Frame):
-
+class ValidationPage(AnimatedFrame):
     def __init__(self, parent, controller):
-        ttk.Frame.__init__(self, parent)
+        AnimatedFrame.__init__(self, parent)
         self.controller = controller
 
-        header = ttk.Label(self,
-                           text="Amazon Validation",
-                           style="Header.TLabel")
+        header = ttk.Label(self, text="Amazon Validation", style="Header.TLabel")
         header.pack(fill="x", pady=(0, 10))
 
-        self.val_progress = ttk.Progressbar(self,
-                                            orient="horizontal",
-                                            mode="determinate")
+        self.val_progress = ttk.Progressbar(self, orient="horizontal", mode="determinate")
         self.val_progress.pack(pady=10, padx=20, fill="x")
         self.val_label = ttk.Label(self, text="Validating leads... 0%")
         self.val_label.pack()
-        self.continue_button = ttk.Button(self,
-                                          text="Continue to Carrier Lookup",
-                                          command=self.go_to_carrier,
-                                          state="disabled")
+        self.continue_button = ttk.Button(self, text="Continue to Carrier Lookup",
+                                          command=self.go_to_carrier, state="disabled")
         self.continue_button.pack(pady=10)
 
     def on_show(self):
@@ -536,8 +501,7 @@ class ValidationPage(ttk.Frame):
         completed_tasks = 0
         total_numbers = 0
         clear_file("Valid33.txt")
-        self.validation_thread = threading.Thread(target=process_numbers,
-                                                  daemon=True)
+        self.validation_thread = threading.Thread(target=process_numbers, daemon=True)
         self.validation_thread.start()
         self.update_validation_progress()
 
@@ -547,24 +511,17 @@ class ValidationPage(ttk.Frame):
         if os.path.exists("Valid33.txt"):
             with open("Valid33.txt", "r") as f:
                 valid_count = sum(1 for line in f if line.strip())
-        percent = (completed_tasks / total_numbers *
-                   100) if total_numbers else 0
+        percent = (completed_tasks / total_numbers * 100) if total_numbers else 0
         self.val_progress['maximum'] = total_numbers
         self.val_progress['value'] = completed_tasks
-        self.val_label.config(
-            text=
-            f"Processed: {total_numbers}, Valid: {valid_count}, {percent:.0f}%"
-        )
+        self.val_label.config(text=f"Processed: {total_numbers}, Valid: {valid_count}, {percent:.0f}%")
         if self.validation_thread.is_alive():
             self.after(100, self.update_validation_progress)
         else:
             if os.path.exists("Valid33.txt"):
                 with open("Valid33.txt", "r") as f:
                     valid_count = sum(1 for line in f if line.strip())
-            self.val_label.config(
-                text=
-                f"Validation complete! Processed: {total_numbers}, Valid: {valid_count}"
-            )
+            self.val_label.config(text=f"Validation complete! Processed: {total_numbers}, Valid: {valid_count}")
             self.continue_button.config(state="normal")
 
     def go_to_carrier(self):
@@ -572,18 +529,15 @@ class ValidationPage(ttk.Frame):
 
 
 # ----------------- Page 3: Carrier Lookup -----------------
-class CarrierLookupPage(ttk.Frame):
-
+class CarrierLookupPage(AnimatedFrame):
     def __init__(self, parent, controller):
-        ttk.Frame.__init__(self, parent)
+        AnimatedFrame.__init__(self, parent)
         self.controller = controller
 
         header = ttk.Label(self, text="Carrier Lookup", style="Header.TLabel")
         header.pack(fill="x", pady=(0, 10))
 
-        self.carrier_progress = ttk.Progressbar(self,
-                                                orient="horizontal",
-                                                mode="indeterminate")
+        self.carrier_progress = ttk.Progressbar(self, orient="horizontal", mode="indeterminate")
         self.carrier_progress.pack(pady=10, padx=20, fill="x")
         self.carrier_label = ttk.Label(self, text="Looking up carriers...")
         self.carrier_label.pack()
@@ -604,8 +558,7 @@ class CarrierLookupPage(ttk.Frame):
 
     def start_carrier_lookup(self):
         self.carrier_progress.start(10)
-        self.carrier_thread = threading.Thread(target=self.run_carrier_lookup,
-                                               daemon=True)
+        self.carrier_thread = threading.Thread(target=self.run_carrier_lookup, daemon=True)
         self.carrier_thread.start()
         self.update_summary()
 
@@ -625,20 +578,16 @@ class CarrierLookupPage(ttk.Frame):
                     valid_total += count
         else:
             summary = "No carrier files found."
-        self.file_summary_label.config(
-            text=f"Total Valid Numbers: {valid_total}\n{summary}")
+        self.file_summary_label.config(text=f"Total Valid Numbers: {valid_total}\n{summary}")
         # Update live every 500 ms
         self.after(500, self.update_summary)
 
     def run_carrier_lookup(self):
         if not os.path.exists("Valid33.txt"):
-            self.safe_after(
-                0, lambda: messagebox.showerror(
-                    "Error",
-                    "Valid33.txt not found. Please run the validation process first.",
-                    parent=self))
-            self.safe_after(
-                0, lambda: self.controller.show_frame("GeneratorPage"))
+            self.safe_after(0, lambda: messagebox.showerror("Error",
+                                                             "Valid33.txt not found. Please run the validation process first.",
+                                                             parent=self))
+            self.safe_after(0, lambda: self.controller.show_frame("GeneratorPage"))
             return
         try:
             phone_validator = PhoneNumberValidator()
@@ -651,18 +600,11 @@ class CarrierLookupPage(ttk.Frame):
                 valid_total = 0
             msg = f"{valid_total} numbers processed. Valid numbers saved in their respective carrier files."
             self.safe_after(0, lambda: self.carrier_progress.stop())
-            self.safe_after(
-                0, lambda: self.carrier_label.config(
-                    text="Carrier Lookup Complete!"))
-            self.safe_after(
-                0, lambda: messagebox.showinfo(
-                    "Carrier Lookup", msg, parent=self))
-
+            self.safe_after(0, lambda: self.carrier_label.config(text="Carrier Lookup Complete!"))
+            self.safe_after(0, lambda: messagebox.showinfo("Carrier Lookup", msg, parent=self))
         except Exception as e:
-            error_message = str(e)  # Store the error message in a variable
-            self.safe_after(
-                0, lambda: messagebox.showerror(
-                    "Error", error_message, parent=self))
+            error_message = str(e)
+            self.safe_after(0, lambda: messagebox.showerror("Error", error_message, parent=self))
 
 
 # =============================================================================
